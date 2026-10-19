@@ -1,0 +1,233 @@
+{
+  "name": "My workflow 6",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clientes",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        144,
+        -128
+      ],
+      "id": "0a6c23bd-aa33-40b6-936a-1d433138afa4",
+      "name": "Webhook",
+      "webhookId": "c1a981a1-d217-425c-8470-5363e1d43c33"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"dados\": null\n}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1280,
+        -112
+      ],
+      "id": "d492fab4-8090-4327-b4c6-ae74a59f8776",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "url": "https://digitalinnovationone.github.io/dio-lab-assistente-investimentos-rpa-n8n/data.csv",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        256,
+        -16
+      ],
+      "id": "06d3c101-6531-443e-a173-43a90945fcab",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst item = $input.first().json;\n\n// Localiza o CSV recebido pelo HTTP Request\nconst csvRaw =\n  item.data ??\n  item.body ??\n  item.text ??\n  item;\n\nlet csv;\n\nif (typeof csvRaw === 'string') {\n  csv = csvRaw;\n} else {\n  throw new Error(\n    'O CSV não chegou como texto. Verifique o formato de resposta do HTTP Request.'\n  );\n}\n\n// Divide o CSV em linhas\nconst lines = csv\n  .replace(/^\\uFEFF/, '')\n  .trim()\n  .split(/\\r?\\n/)\n  .filter(line => line.trim() !== '');\n\nif (lines.length < 2) {\n  throw new Error('O CSV precisa ter cabeçalho e pelo menos uma linha de dados.');\n}\n\n// Detecta o separador mais provável\nconst separadores = [',', ';', '\\t'];\nconst separador = separadores.reduce((melhor, atual) =>\n  (lines[0].split(atual).length >\n   lines[0].split(melhor).length) ? atual : melhor\n);\n\n// Divide campos respeitando aspas e vírgulas dentro delas\nfunction separarLinha(linha, sep) {\n  const resultado = [];\n  let campo = '';\n  let aspas = false;\n\n  for (let i = 0; i < linha.length; i++) {\n    const c = linha[i];\n\n    if (c === '\"') {\n      if (aspas && linha[i + 1] === '\"') {\n        campo += '\"';\n        i++;\n      } else {\n        aspas = !aspas;\n      }\n    } else if (c === sep && !aspas) {\n      resultado.push(campo.trim());\n      campo = '';\n    } else {\n      campo += c;\n    }\n  }\n\n  resultado.push(campo.trim());\n  return resultado;\n}\n\n// Padroniza os nomes das colunas\nconst headers = separarLinha(lines[0], separador)\n  .map(h => h.trim().replace(/^\"|\"$/g, ''));\n\nconst clientes = lines.slice(1).map((linha, index) => {\n  const colunas = separarLinha(linha, separador);\n  const cliente = {};\n\n  headers.forEach((header, i) => {\n    cliente[header] = colunas[i] ?? '';\n  });\n\n  return { json: cliente };\n});\n\nreturn clientes;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        -16
+      ],
+      "id": "e960877d-3757-45ec-901d-86316e1ddc77",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        576,
+        -112
+      ],
+      "id": "9a3247bc-9cbf-43be-9407-40544ba1c9ff",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst entrada = $input.all();\nconst resultado = [];\n\n// Separa os dados dos clientes e os parâmetros de investimento\nlet clientes = [];\nlet investimento = {};\n\nfor (const item of entrada) {\n  const dados = item.json;\n\n  if (Array.isArray(dados.body?.clientes)) {\n    clientes.push(...dados.body.clientes);\n  } else if (Array.isArray(dados.clientes)) {\n    clientes.push(...dados.clientes);\n  } else if (dados.nome && dados.email) {\n    clientes.push(dados);\n  }\n\n  // Parâmetros recebidos do fluxo de investimento\n  if (dados.produto !== undefined) {\n    investimento.produto = dados.produto;\n  }\n\n  if (dados.minimo !== undefined) {\n    investimento.minimo = dados.minimo;\n  }\n\n  if (dados.rentabilidade !== undefined) {\n    investimento.rentabilidade = dados.rentabilidade;\n  }\n}\n\n// Cria uma mensagem personalizada para cada cliente\nfor (const cliente of clientes) {\n  const perfil = cliente.perfil ?? 'Não informado';\n\n  let foco;\n\n  if (perfil === 'Conservador') {\n    foco = 'preservação do patrimônio e previsibilidade';\n  } else if (perfil === 'Moderado') {\n    foco = 'equilíbrio entre segurança e crescimento';\n  } else if (perfil === 'Arrojado') {\n    foco = 'crescimento patrimonial e maior tolerância a riscos';\n  } else {\n    foco = 'avaliação de alternativas compatíveis com seu perfil';\n  }\n\n  const mensagem = [\n    `Olá, ${cliente.nome}!`,\n    '',\n    `Seu perfil de investidor é ${perfil}.`,\n    `Seu saldo informado é ${cliente.saldo ?? 'Não informado'}.`,\n    '',\n    `Nosso foco para você é ${foco}.`,\n    '',\n    `Investimento disponível: ${investimento.produto ?? 'Não informado'}.`,\n    `Valor mínimo informado: ${investimento.minimo ?? 'Não informado'}.`,\n    `Rentabilidade informada: ${investimento.rentabilidade ?? 'Não informada'}.`,\n    '',\n    'Avalie os riscos, os custos e a liquidez antes de investir.'\n  ].join('\\n');\n\n  resultado.push({\n    json: {\n      nome: cliente.nome,\n      email: cliente.email,\n      saldo: cliente.saldo,\n      perfil,\n      produto_investimento: investimento.produto ?? null,\n      valor_minimo: investimento.minimo ?? null,\n      rentabilidade: investimento.rentabilidade ?? null,\n      mensagem_personalizada: mensagem\n    }\n  });\n}\n\nreturn resultado;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        -112
+      ],
+      "id": "3549f3d5-5cae-4091-b770-dda87f6d0b5b",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst entrada = $input.all();\n\nreturn entrada.map((item, index) => {\n  const cliente = item.json;\n\n  return {\n    json: {\n      numero: index + 1,\n      nome: cliente.nome ?? '',\n      email: cliente.email ?? '',\n      perfil: cliente.perfil ?? '',\n      saldo: cliente.saldo ?? '',\n      produto_investimento: cliente.produto_investimento ?? '',\n      valor_minimo: cliente.valor_minimo ?? '',\n      rentabilidade: cliente.rentabilidade ?? '',\n      foco: cliente.perfil === 'Conservador'\n        ? 'Preservação do patrimônio e previsibilidade'\n        : cliente.perfil === 'Moderado'\n          ? 'Equilíbrio entre segurança e crescimento'\n          : cliente.perfil === 'Arrojado'\n            ? 'Crescimento patrimonial e tolerância a riscos'\n            : 'Perfil a avaliar',\n      mensagem_personalizada: cliente.mensagem_personalizada ?? '',\n      status: 'Pendente de análise do agente'\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -112
+      ],
+      "id": "ed8e3b99-9c03-46f8-8f14-9dc7e4ea6228",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-3.5-turbo",
+          "mode": "list",
+          "cachedResultName": "GPT-3.5-TURBO"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "# Agente de IA — Envio de E-mails Personalizados para Clientes\n\n## Função\nVocê é um assistente especializado na elaboração de e-mails profissionais para clientes investidores. Sua tarefa é produzir um e-mail personalizado para cada cliente, utilizando exclusivamente os dados recebidos do fluxo do n8n.\n\n## Dados disponíveis\nVocê poderá receber:\n- Nome do cliente\n- E-mail\n- Perfil de investidor\n- Saldo informado\n- Produto de investimento\n- Valor mínimo para investimento\n- Rentabilidade informada\n- Foco de comunicação\n- Mensagem personalizada inicial\n\n## Instruções\n\n1. Elabore um e-mail individual, utilizando o nome do cliente na saudação.\n2. Apresente as informações de forma organizada, com parágrafos curtos e uma seção específica para os dados do investimento.\n3. Adapte a comunicação ao perfil do cliente:\n   - **Conservador:** linguagem voltada à preservação do patrimônio, previsibilidade e compreensão dos riscos.\n   - **Moderado:** linguagem voltada ao equilíbrio entre segurança e crescimento, com consideração dos riscos.\n   - **Arrojado:** linguagem voltada às possibilidades de crescimento patrimonial, sem minimizar os riscos de mercado.\n4. Apresente o produto, o valor mínimo e a rentabilidade somente quando essas informações tiverem sido fornecidas.\n5. Não prometa ganhos, lucros, retornos garantidos ou valorização futura.\n6. Não apresente rentabilidade passada ou estimada como garantia de resultados futuros.\n7. Não invente taxas, prazos, condições, liquidez, garantias, benefícios ou características do produto.\n8. Não afirme que o investimento é adequado ao cliente apenas com base no perfil ou no saldo informado.\n9. Não recomende que o cliente invista todo o saldo disponível. O saldo é apenas uma informação de contexto.\n10. Utilize português brasileiro, com tom cordial, profissional, claro e natural. Evite pressão comercial, exageros e expressões sensacionalistas.\n11. Explique que o cliente deve avaliar riscos, custos, liquidez e condições do produto antes de tomar uma decisão.\n12. Termine convidando o cliente a solicitar mais informações, sem pressioná-lo a investir.\n\n## Formato de saída\n\nRetorne exclusivamente um objeto JSON válido, com os seguintes campos:\n\n{\n  \"nome\": \"Nome do cliente\",\n  \"email\": \"E-mail do cliente\",\n  \"assunto\": \"Assunto profissional e personalizado\",\n  \"corpo_email\": \"Texto completo do e-mail, com saudação, apresentação das informações, observações pertinentes e encerramento cordial.\"\n}\n\nO campo `corpo_email` deve conter o e-mail pronto para ser enviado pelo próximo node de e-mail do n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1088,
+        288
+      ],
+      "id": "2326b77f-e4b3-482a-965b-2b93b27d7db2",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "beM8a2A4rQHBCn49",
+          "name": "OpenAI account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "535b9b83-24a0-4ac8-a67b-8a23502ac23c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ae808f14e97b13dca4b4d965393e571871301291a8c12e5c87888a83e04b9722"
+  },
+  "nodeGroups": [],
+  "id": "6HEiDkX4bzAPx0cE",
+  "tags": []
+}
